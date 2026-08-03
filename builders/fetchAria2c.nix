@@ -20,6 +20,7 @@ pkgs.runCommand name {
   cd $out
   aria2c \
     --input-file ${inputFile} \
+    --enable-http-keep-alive=false \
     --max-concurrent-downloads=${builtins.toString maxConcurrentDownloads} \
     --human-readable=true ${lib.concatStringsSep " " extraArgs}
 ''
