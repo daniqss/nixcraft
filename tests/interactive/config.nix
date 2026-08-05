@@ -207,8 +207,10 @@ in {
 
         onepoint12 = {
           enable = true;
-          # enableFastAssetDownload = true;
-          # assetHash = "sha256-v3pPzxvfo6zO1CWUkAi3RxRh4rE0yMVuKXVhWCwh17U=";
+          # fastAssetDownload = {
+          #   enable = true;
+          #   hash = "sha256-v3pPzxvfo6zO1CWUkAi3RxRh4rE0yMVuKXVhWCwh17U=";
+          # };
           version = "1.12.1";
         };
 
