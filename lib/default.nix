@@ -326,15 +326,42 @@ in rec {
   };
 
   maven = rec {
+    # A maven coordinate can be "groupId:artifactId:version"
+    # or "groupId:artifactId:version:classifier" for native jars
+    parseCoordinate = libString: let
+      inherit (builtins) elemAt length;
+      parts = lib.splitString ":" libString;
+    in {
+      groupId = elemAt parts 0;
+      artifactId = elemAt parts 1;
+      version = elemAt parts 2;
+      classifier =
+        if length parts > 3
+        then elemAt parts 3
+        else null;
+    };
+
+    # Maven coordinate without the version, used to detect the same artifact being provided twice
+    # classifier is kept so that a native jar never collides with the plain jar of the same artifact
+    artifactKey = libString: let
+      inherit (parseCoordinate libString) groupId artifactId classifier;
+    in "${groupId}:${artifactId}${lib.optionalString (classifier != null) ":${classifier}"}";
+
     mkLibUrl = url: libString: let
-      inherit (lib) splitString replaceString;
-      inherit (builtins) elemAt;
-      libStringParts = splitString ":" libString;
-      dotDir = elemAt libStringParts 0;
-      dir = replaceString "." "/" dotDir;
-      name = elemAt libStringParts 1;
-      version = elemAt libStringParts 2;
-    in "${url}/${dir}/${name}/${version}/${name}-${version}.jar";
+      inherit (parseCoordinate libString) groupId artifactId version;
+      dir = lib.replaceString "." "/" groupId;
+    in "${url}/${dir}/${artifactId}/${version}/${artifactId}-${version}.jar";
+
+    # Drop libraries whose artifact is already provided by one of the given maven coordinates
+    filterLibsByCoordinates = coordinates: libraries: let
+      provided = lib.genAttrs (map artifactKey coordinates) (_: true);
+    in
+      filter (library: !(provided ? ${artifactKey library.name})) libraries;
+
+    # Keeps the last occurrence of every artifact,
+    # so loader libraries appended after the vanilla one wins
+    dedupLibsByArtifact = libraries:
+      lib.attrValues (lib.listToAttrs (map (library: nameValuePair (artifactKey library.name) library) (lib.reverseList libraries)));
 
     isLibraryAllowedForOS = OS: library: let
       lemma1 = acc: rule:
