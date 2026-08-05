@@ -45,16 +45,21 @@ in
           default = true;
         };
 
-      # Hide these two option for now
-      enableFastAssetDownload =
-        (lib.mkEnableOption "fast asset downloading using aria2c (hash needs to be provided)")
-        // {
-          internal = true;
-        };
-
-      assetHash = lib.mkOption {
-        type = lib.types.nonEmptyStr;
+      # hide this option for now
+      fastAssetDownload = lib.mkOption {
         internal = true;
+        default = {};
+        type = lib.types.submodule {
+          options = {
+            enable = lib.mkEnableOption "Enable fast asset downloading with aria2c";
+
+            hash = lib.mkOption {
+              type = lib.types.nonEmptyStr;
+              default = lib.fakeHash;
+              internal = true;
+            };
+          };
+        };
       };
 
       desktopEntry = lib.mkOption {
@@ -239,35 +244,34 @@ in
       shared
 
       {
-        finalLaunchShellCommandString =
-          let
-            authDir = "${config.absoluteDir}/.nixcraft/auth";
-            accessTokenPath =
-              if (config.account != null && config.account.refreshTokenPath != null)
-              then "${authDir}/minecraft-access-token"
-              else pkgs.writeText "dummy" "dummy";
-            profilePath = "${authDir}/minecraft-profile.json";
+        finalLaunchShellCommandString = let
+          authDir = "${config.absoluteDir}/.nixcraft/auth";
+          accessTokenPath =
+            if (config.account != null && config.account.refreshTokenPath != null)
+            then "${authDir}/minecraft-access-token"
+            else pkgs.writeText "dummy" "dummy";
+          profilePath = "${authDir}/minecraft-profile.json";
 
-            dynamicProfileArgs =
-              lib.optionals
-              (config.account != null && config.account.refreshTokenPath != null)
-              [
-                ''--username "$(${pkgs.jq}/bin/jq -er '.name' < ${escapeShellArg profilePath})"''
-                ''--uuid "$(${pkgs.jq}/bin/jq -er '.id' < ${escapeShellArg profilePath})"''
-              ];
-          in
-            concatStringsSep " " (
-              [
-                ''"${config.java.package}/bin/java"''
-                config.java.finalArgumentShellString
-                config.finalArgumentShellString
-              ]
-              ++ dynamicProfileArgs
-              ++ [
-                # unmodded client doesn't launch if access token is not provided
-                ''--accessToken "$(${pkgs.coreutils}/bin/cat ${escapeShellArg accessTokenPath})"''
-              ]
-            );
+          dynamicProfileArgs =
+            lib.optionals
+            (config.account != null && config.account.refreshTokenPath != null)
+            [
+              ''--username "$(${pkgs.jq}/bin/jq -er '.name' < ${escapeShellArg profilePath})"''
+              ''--uuid "$(${pkgs.jq}/bin/jq -er '.id' < ${escapeShellArg profilePath})"''
+            ];
+        in
+          concatStringsSep " " (
+            [
+              ''"${config.java.package}/bin/java"''
+              config.java.finalArgumentShellString
+              config.finalArgumentShellString
+            ]
+            ++ dynamicProfileArgs
+            ++ [
+              # unmodded client doesn't launch if access token is not provided
+              ''--accessToken "$(${pkgs.coreutils}/bin/cat ${escapeShellArg accessTokenPath})"''
+            ]
+          );
 
         finalLaunchShellScript = let
           accountMode =
@@ -526,16 +530,18 @@ in
       (let
         invalidKeys = lib.filter (
           key:
-            key == ""
+            key
+            == ""
             || lib.hasInfix ":" key
             || lib.hasInfix "\n" key
             || lib.hasInfix "\r" key
         ) (lib.attrNames config.gameOptions);
         multilineStringKeys = lib.attrNames (lib.filterAttrs (
-          _: value:
-            lib.isString value
-            && (lib.hasInfix "\n" value || lib.hasInfix "\r" value)
-        ) config.gameOptions);
+            _: value:
+              lib.isString value
+              && (lib.hasInfix "\n" value || lib.hasInfix "\r" value)
+          )
+          config.gameOptions);
       in {
         _module.check = lib.all (value: value) [
           (lib.assertMsg (invalidKeys == [])
@@ -550,12 +556,12 @@ in
           version = lib.mkOptionDefault config.meta.versionData.id;
           assetIndex = config.meta.versionData.assets;
           assetsDir =
-            if config.enableFastAssetDownload
+            if config.fastAssetDownload.enable
             then
               (mkAssetsDir {
                 versionData = config.meta.versionData;
-                hash = config.assetHash;
-                useAria2c = config.enableFastAssetDownload;
+                hash = config.fastAssetDownload.hash;
+                useAria2c = config.fastAssetDownload.enable;
               })
             else mkAssetsDir {versionData = config.meta.versionData;};
 
@@ -638,11 +644,6 @@ in
             (lib.makeSearchPathOutput "lib" "lib/vdpau" libvdpau)
           ];
         })
-
-      # TODO: implement fast asset download
-      (lib.mkIf config.enableFastAssetDownload {
-        assetHash = lib.mkOptionDefault lib.fakeHash;
-      })
 
       (lib.mkIf config.enableNvidiaOffload {
         envVars = {
