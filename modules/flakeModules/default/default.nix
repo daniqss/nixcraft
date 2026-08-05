@@ -179,6 +179,10 @@ in {
         inherit lib pkgs sources submodules;
       };
 
+      checks.duplicated-libraries = import "${self}/tests/duplicated-libraries.nix" {
+        inherit lib pkgs;
+      };
+
       checks.game-options = import "${self}/tests/game-options.nix" {
         inherit lib pkgs submodules;
       };

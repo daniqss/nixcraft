@@ -25,7 +25,7 @@ in
       submoduleWith {
         modules = [
           fileModule
-          ({config, ...}: {
+          ({...}: {
             options = {
               method = lib.mkOption {
                 type = lib.types.enum ["copy" "copy-init" "symlink" "world"];
@@ -198,6 +198,17 @@ in
         default = [];
       };
 
+      filterDuplicatedLibraries = lib.mkOption {
+        type = lib.types.bool;
+        default = true;
+        description = ''
+          Drop the libraries whose maven groupId:artifactId is also provided by the enabled mod loader,
+          and collapse duplicated artifacts within `libraries`.
+          Without it the same library can end up twice on the classpath with different versions,
+          which crashes the game at launch.
+        '';
+      };
+
       mainJar = lib.mkOption {
         type = lib.types.path;
       };
@@ -321,8 +332,15 @@ in
         # Make lib dir out of all libraries and then
         # pass them to java class paths
         java.cp = let
+          # Libraries the mod loader already puts on the classpath through its own `classes`
+          loaderDependencies =
+            lib.optionals config.fabricLoader.enable config.fabricLoader.dependencies
+            ++ lib.optionals config.quiltLoader.enable config.quiltLoader.dependencies;
+
           normalLibDir = mkLibDir {
             libraries = config.libraries;
+            excludeCoordinates = lib.optionals config.filterDuplicatedLibraries loaderDependencies;
+            dedupArtifacts = config.filterDuplicatedLibraries;
           };
 
           # Fix bug with jopt-simple which gets an invalid module name
@@ -597,7 +615,8 @@ in
         prefixMsg = "${config._instanceType} instance '${config.name}'";
         invalidModNames = lib.filter (
           modName:
-            modName == ""
+            modName
+            == ""
             || modName == "."
             || modName == ".."
             || builtins.baseNameOf modName != modName
